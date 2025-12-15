@@ -1,3 +1,6 @@
+// Content script loaded
+console.log("AutoAnki content script loaded and ready");
+
 async function fetchDeckNames() {
     try {
         const r = await fetch("http://localhost:8765", {
@@ -103,9 +106,14 @@ function createGeneratorUI(flashcardData) {
             const item = document.createElement('div');
             item.className = 'fcg-item';
 
-            // Clean up each HTML file
-            const frontHTML = card.front.replace(/</g, "<").replace(/>/g, ">");
-            const backHTML = card.back.replace(/</g, "<").replace(/>/g, ">");
+            // Escape HTML to prevent XSS
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            const frontHTML = escapeHtml(card.front);
+            const backHTML = escapeHtml(card.back);
 
             let isShowingBack = false;
 
@@ -202,16 +210,29 @@ document.addEventListener('keydown', function(event) {
     }
 });
 
+// Set up message listener immediately when script loads
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log("Content script received message:", request);
+    
     if (request.action === 'ping') {
         console.log("Received ping from background script.");
         sendResponse({ status: 'pong' });
-        return true; 
+        return false; // Synchronous response, don't keep channel open
     }
 
     if (request.flashcards) {
-        console.log("Received flashcards from background script.");
-        createGeneratorUI(request.flashcards);
+        console.log("Received flashcards from background script. Creating UI...");
+        console.log("Flashcard data length:", request.flashcards?.length || 0);
+        try {
+            createGeneratorUI(request.flashcards);
+            console.log("UI created successfully!");
+        } catch (error) {
+            console.error("Error creating UI:", error);
+        }
+        // No response needed for flashcards message
+        return false;
     }
+    
+    return false; // No async response needed
 });
 

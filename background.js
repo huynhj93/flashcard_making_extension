@@ -148,18 +148,63 @@ async function createFlashcards(text, tab) {
     }
     
     const tabId = await resolveTabId(tab);
-    await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ["content.js"]
-    });
-
-    const response = await chrome.tabs.sendMessage(tabId, { action: "ping" });
-
-        if (response && response.status === "pong") {
-            await chrome.tabs.sendMessage(tabId, { flashcards: output });
-        } else {
-            throw new Error("Content script did not respond correctly.");
+    console.log("Sending flashcards to tab:", tabId);
+    
+    // Helper function to send message with retry
+    async function sendMessageWithRetry(message, maxRetries = 3) {
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                const response = await chrome.tabs.sendMessage(tabId, message);
+                return response;
+            } catch (err) {
+                if (i === maxRetries - 1) throw err;
+                console.log(`Retry ${i + 1} failed, waiting...`);
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
         }
+    }
+    
+    // Try to ping existing content script first
+    try {
+        const response = await sendMessageWithRetry({ action: "ping" });
+        console.log("Ping response:", response);
+        
+        if (response && response.status === "pong") {
+            console.log("Sending flashcards data to content script...");
+            await sendMessageWithRetry({ flashcards: output });
+            console.log("Flashcards sent successfully!");
+            return;
+        }
+    } catch (msgErr) {
+        console.log("Content script not loaded, injecting manually:", msgErr.message);
+    }
+    
+    // If ping failed, inject script and try again
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ["content.js"]
+        });
+        console.log("Script injected, waiting for initialization...");
+        
+        // Wait longer for script to fully initialize and set up listeners
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Try pinging with retries
+        const response = await sendMessageWithRetry({ action: "ping" }, 5);
+        console.log("Ping response after injection:", response);
+        
+        if (response && response.status === "pong") {
+            console.log("Sending flashcards data...");
+            await sendMessageWithRetry({ flashcards: output });
+            console.log("Flashcards sent after manual injection!");
+        } else {
+            throw new Error("Content script did not respond correctly after injection.");
+        }
+    } catch (injectErr) {
+        console.error("Failed to communicate with content script:", injectErr);
+        throw new Error(`Failed to communicate with content script: ${injectErr.message}`);
+    }
 
     } catch (err) {
         if (err.message.includes("Receiving end does not exist")) {
