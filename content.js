@@ -3,14 +3,9 @@ console.log("AutoAnki content script loaded and ready");
 
 async function fetchDeckNames() {
     try {
-        const r = await fetch("http://localhost:8765", {
-            method: "POST",
-            body: JSON.stringify({ action: "deckNames", version: 6 })
-        });
-        if (!r.ok) throw new Error("AnkiConnect request failed");
-        const j = await r.json();
-        if (j.error) throw new Error(j.error);
-        return j.result || [];
+        const response = await chrome.runtime.sendMessage({ action: "fetchDeckNames" });
+        if (response.error) throw new Error(response.error);
+        return response.result || [];
     } catch (e) {
         console.log("Flashcard Generator: Could not fetch Anki decks.", e);
         return null; 
@@ -18,23 +13,12 @@ async function fetchDeckNames() {
 }
 
 async function addNoteToDeck(deck, front, back) {
-    const payload = {
-        action: "addNote",
-        version: 6,
-        params: {
-            note: {
-                deckName: deck,
-                modelName: "Basic",
-                fields: { Front: front, Back: back },
-                options: { allowDuplicate: false },
-                tags: ["flashcard-generator"]
-            }
-        }
-    };
-    return fetch("http://localhost:8765", {
-        method: "POST",
-        body: JSON.stringify(payload)
-    }).then(r => r.json());
+    return chrome.runtime.sendMessage({ 
+        action: "addNoteToDeck",
+        deck,
+        front,
+        back
+    });
 }
 
 function parseFlashcards(raw) {
@@ -69,10 +53,10 @@ function createGeneratorUI(flashcardData) {
     }
 
     
-    const style = document.createElement('style');
+    const style = document.createElement('link');
     style.id = 'flashcard-generator-style';
     style.rel = 'stylesheet';
-    style.href= chrome.runtime.getURL('flashcard-generator.css');
+    style.href = chrome.runtime.getURL('flashcard-generator.css');
     document.head.appendChild(style);
 
     // Flashcard HTML

@@ -227,4 +227,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         createFlashcards(message.text, sender.tab);
         return true; 
     }
+    
+    // Handle AnkiConnect requests from content script
+    if (message.action === "fetchDeckNames") {
+        fetch("http://localhost:8765", {
+            method: "POST",
+            body: JSON.stringify({ action: "deckNames", version: 6 })
+        })
+        .then(r => r.json())
+        .then(j => {
+            if (j.error) {
+                sendResponse({ error: j.error });
+            } else {
+                sendResponse({ result: j.result || [] });
+            }
+        })
+        .catch(e => {
+            console.log("AnkiConnect fetch error:", e);
+            sendResponse({ error: e.message });
+        });
+        return true; // Keep channel open for async response
+    }
+    
+    if (message.action === "addNoteToDeck") {
+        const payload = {
+            action: "addNote",
+            version: 6,
+            params: {
+                note: {
+                    deckName: message.deck,
+                    modelName: "Basic",
+                    fields: { Front: message.front, Back: message.back },
+                    options: { allowDuplicate: false },
+                    tags: ["flashcard-generator"]
+                }
+            }
+        };
+        fetch("http://localhost:8765", {
+            method: "POST",
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(j => sendResponse(j))
+        .catch(e => {
+            console.log("AnkiConnect addNote error:", e);
+            sendResponse({ error: e.message });
+        });
+        return true; // Keep channel open for async response
+    }
 });

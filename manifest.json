@@ -21,5 +21,11 @@
       "css": ["flashcard-generator.css"],
       "js": ["content.js"]
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["flashcard-generator.css"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }
